@@ -15,9 +15,16 @@ mod varreader;
 
 use app::{App, AppMessage, ConnectionMethod};
 use audio::AudioManager;
+use clap::{Args, Parser, Subcommand, ValueEnum};
 use clientmanager::ClientManager;
 use definitions::{Definitions, ProgramAction, SyncPermission};
 use log::{error, info, warn};
+use ratatui::{
+    crossterm::event::{self, KeyCode, KeyEventKind},
+    style::Stylize,
+    widgets::Paragraph,
+    DefaultTerminal,
+};
 use simconfig::Config;
 use simconnect::{DispatchResult, SimConnector};
 
@@ -131,8 +138,39 @@ fn write_update_data(
         client.update(data, false);
     }
 }
+#[derive(Parser)]
+struct Cli {
+    ///Launch as server mode.
+    connectionType: Commands,
+}
 
-fn main() {
+#[derive(Subcommand)]
+enum Commands {
+    /// Adds files to myapp
+    Client(ClientArgs),
+    Server(ServerArgs)
+}
+
+#[derive(Args)]
+struct ClientArgs {
+    hostType: Mode,
+    sessionCode: i16,
+    port: i16,
+}
+
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
+enum Mode {
+    Direct,
+    Cloud
+}
+
+#[derive(Args)]
+struct ServerArgs {
+    sessionCode: i16,
+    port: i16,
+}
+
+fn main() -> io::Result<()> {
     let is_dev_build = cfg!(debug_assertions);
 
     if !is_dev_build {
@@ -180,6 +218,7 @@ fn main() {
     // Client stopped, need to stop transfer client
     let mut should_set_none_client = false;
 
+    let mut terminal = ratatui::init();
     let app_interface = App::setup(format!("YourControls v{}", updater.get_version()));
 
     // Transfer
@@ -242,8 +281,17 @@ fn main() {
         connected
     };
 
+    terminal.clear()?;
+
     loop {
         let timer = Instant::now();
+
+        terminal.draw(|frame| {
+            let greeting = Paragraph::new("Welcome to YourControls! (press 'q' to quit)")
+                .white()
+                .on_blue();
+            frame.render_widget(greeting, frame.area());
+        })?;
 
         if let Some(client) = transfer_client.as_mut() {
             // Simconnect message
@@ -836,7 +884,7 @@ fn main() {
         };
         // Attempt Simconnect connection
         if app_interface.exited() || installer_spawned {
-            break;
+            return Ok(());
         }
     }
 }
